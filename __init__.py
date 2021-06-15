@@ -33,6 +33,7 @@ def get_role_by_significance(db, guild_id, role_significance):
     r = db.guilds.find_one(q, {"known_roles.$": 1})
     return r["known_roles"][0]
 
+
 def get_significant_roles(db, guild_id):
     """
     Returns a list of tuples of significant role IDs and their associated significances.
