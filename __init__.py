@@ -33,6 +33,29 @@ def get_role_by_significance(db, guild_id, role_significance):
     r = db.guilds.find_one(q, {"known_roles.$": 1})
     return r["known_roles"][0]
 
+def get_significant_roles(db, guild_id):
+    """
+    Returns a list of tuples of significant role IDs and their associated significances.
+    Example return:
+        [{'id': '111111111111111111', 'name': 'Members', 'significance': ['Member']},
+         {'color': 15844367.0,
+          'id': '333333333333333333',
+          'name': '!eggs',
+          'significance': ['eggs']},
+         {'id': '444444444444444444',
+          'name': 'periphery',
+          'significance': ['periphery']},
+         {'id': '555555555555555555',
+          'name': 'Recruiter',
+          'significance': ['recruiter']}]
+    :param db:
+    :param guild_id:
+    :return list:
+    """
+    q = {"_id": guild_id}
+    r = db.guilds.find_one(q, {"known_roles.$": 1})
+    return r["known_roles"]
+
 
 def get_channel_by_significance(db, guild_id, channel_significance):
     q = {"_id": guild_id, "known_channels.significance": channel_significance}
