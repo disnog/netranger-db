@@ -67,27 +67,3 @@ def upsert_member(db, user, role_significances):
         {"$setOnInsert": {"_id": int(user["id"])}, "$set": m},
         upsert=True,
     )
-
-    # TODO: Fix these! They break schema.
-    # def add_channel_significance(channel_id, guild_id, channel_significance):
-    #     q = {"_id": id, "guild_id": guild_id}
-    #     update = {
-    #         "$addToSet": {
-    #             "known_channels.id": channel_id,
-    #             f"known_channels.{channel_id}.significance": channel_significance,
-    #         }
-    #     }
-    #     r = g.db.db.guilds.updateOne(q, update, {"upsert": True})
-    #     return r
-    #
-    #
-    # def add_role_significance(role_id, guild_id, role_significance):
-    #     q = {"_id": id, "guild_id": guild_id}
-    #     update = {
-    #         "$addToSet": {
-    #             "known_roles.id": role_id,
-    #             f"known_roles.{role_id}.significance": role_significance,
-    #         }
-    #     }
-    #     r = g.db.db.guilds.updateOne(q, update, {"upsert": True})
-    #     return r
