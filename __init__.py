@@ -53,8 +53,8 @@ def get_significant_roles(db, guild_id):
     :param guild_id:
     :return list:
     """
-    q = {"_id": guild_id}
-    r = db.guilds.find_one(q, {"known_roles.$": 1})
+    q = {"_id": str(guild_id)}
+    r = db.guilds.find_one(q, {"known_roles": 1})
     return r["known_roles"]
 
 
