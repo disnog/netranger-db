@@ -35,9 +35,9 @@ Usage:
 """
 
 from .connection import Database
-from .queries.users import UserQueries
-from .queries.guilds import GuildQueries
 from .queries.config import ConfigQueries
+from .queries.guilds import GuildQueries
+from .queries.users import UserQueries
 
 __version__ = "2.0.0"
 __all__ = ["Database", "UserQueries", "GuildQueries", "ConfigQueries"]

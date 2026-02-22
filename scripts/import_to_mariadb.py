@@ -77,7 +77,8 @@ async def import_users(db: Database, users: list) -> int:
         # Insert user
         await db.execute(
             """
-            INSERT INTO users (id, name, discriminator, nick, first_joined_at, member_number)
+            INSERT INTO users
+                (id, name, discriminator, nick, first_joined_at, member_number)
             VALUES (%s, %s, %s, %s, %s, %s)
             ON DUPLICATE KEY UPDATE
                 name = VALUES(name),
@@ -174,7 +175,8 @@ async def import_guilds(db: Database, guilds: list) -> int:
             if significance:
                 await db.execute(
                     """
-                    INSERT INTO guild_known_channels (guild_id, channel_id, significance)
+                    INSERT INTO guild_known_channels
+                        (guild_id, channel_id, significance)
                     VALUES (%s, %s, %s)
                     ON DUPLICATE KEY UPDATE significance = VALUES(significance)
                     """,
@@ -220,7 +222,7 @@ async def main():
     await db.connect()
     
     try:
-        # Import in order (guilds first for FK constraints, though we're not using FKs from users)
+        # Import in order: guilds first (FK constraints), then users
         guilds = collections.get("guilds", [])
         guild_count = await import_guilds(db, guilds)
         print(f"Imported {guild_count} guilds")

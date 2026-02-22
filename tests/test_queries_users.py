@@ -4,12 +4,10 @@
 from __future__ import annotations
 
 from datetime import datetime
-from unittest.mock import AsyncMock, call
 
 import pytest
 
-from netranger_db.queries.users import User, UserQueries
-
+from netranger_db.queries.users import User
 
 # ---------------------------------------------------------------------------
 # get()
