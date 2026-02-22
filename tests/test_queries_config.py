@@ -5,9 +5,6 @@ from __future__ import annotations
 
 import pytest
 
-from netranger_db.queries.config import ConfigQueries
-
-
 # ---------------------------------------------------------------------------
 # get()
 # ---------------------------------------------------------------------------

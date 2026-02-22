@@ -16,8 +16,8 @@
 
 """Query modules for each domain."""
 
-from .users import UserQueries
-from .guilds import GuildQueries
 from .config import ConfigQueries
+from .guilds import GuildQueries
+from .users import UserQueries
 
 __all__ = ["UserQueries", "GuildQueries", "ConfigQueries"]

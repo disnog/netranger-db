@@ -68,9 +68,9 @@ class Database:
         self._pool: Optional[aiomysql.Pool] = None
         
         # Query interfaces (initialized after connect)
-        from .queries.users import UserQueries
-        from .queries.guilds import GuildQueries
         from .queries.config import ConfigQueries
+        from .queries.guilds import GuildQueries
+        from .queries.users import UserQueries
         
         self.users = UserQueries(self)
         self.guilds = GuildQueries(self)

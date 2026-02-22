@@ -7,7 +7,6 @@ import pytest
 
 from netranger_db.queries.guilds import Guild, KnownChannel, KnownRole
 
-
 # ---------------------------------------------------------------------------
 # get()
 # ---------------------------------------------------------------------------
@@ -70,7 +69,9 @@ async def test_get_guild_no_roles_or_channels(mock_db, sample_guild_row):
 
 @pytest.mark.asyncio
 async def test_get_role_by_significance_found(mock_db, sample_sig_rows_member):
-    role_row = {"id": 1, "role_id": "111000111", "role_name": "Members", "color": 0x00FF00}
+    role_row = {
+        "id": 1, "role_id": "111000111", "role_name": "Members", "color": 0x00FF00
+    }
     mock_db.execute.side_effect = [role_row, sample_sig_rows_member]
 
     role = await mock_db.guilds.get_role_by_significance("987654321", "Member")

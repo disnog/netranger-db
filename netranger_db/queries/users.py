@@ -106,7 +106,8 @@ class UserQueries:
     async def remove_permanent_role(self, user_id: int, role_significance: str) -> None:
         """Remove a permanent role from a user."""
         await self._db.execute(
-            "DELETE FROM user_permanent_roles WHERE user_id = %s AND role_significance = %s",
+            "DELETE FROM user_permanent_roles "
+            "WHERE user_id = %s AND role_significance = %s",
             (user_id, role_significance),
         )
     
@@ -152,7 +153,8 @@ class UserQueries:
         
         # Assign to user
         await self._db.execute(
-            "UPDATE users SET member_number = %s WHERE id = %s AND member_number IS NULL",
+            "UPDATE users SET member_number = %s "
+            "WHERE id = %s AND member_number IS NULL",
             (member_number, user_id),
         )
         

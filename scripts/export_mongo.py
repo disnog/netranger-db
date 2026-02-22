@@ -20,11 +20,12 @@
 Export data from MongoDB for migration to MariaDB.
 
 Usage:
-    MONGO_URI="mongodb://user:pass@host:27017/network_ranger" python export_mongo.py > data.json
-    
-Or with individual variables:
-    MONGO_HOST=localhost MONGO_PORT=27017 MONGO_USER=user MONGO_PASS=pass MONGO_DB=network_ranger \
+    MONGO_URI="mongodb://user:pass@host:27017/network_ranger" \
         python export_mongo.py > data.json
+
+Or with individual variables:
+    MONGO_HOST=localhost MONGO_PORT=27017 MONGO_USER=user MONGO_PASS=pass \
+        MONGO_DB=network_ranger python export_mongo.py > data.json
 """
 
 import json
@@ -102,7 +103,8 @@ def main():
     print(file=sys.stderr)
     print(f"Exported {len(data['collections']['users'])} users", file=sys.stderr)
     print(f"Exported {len(data['collections']['guilds'])} guilds", file=sys.stderr)
-    print(f"Exported {len(data['collections']['config'])} config entries", file=sys.stderr)
+    n_config = len(data["collections"]["config"])
+    print(f"Exported {n_config} config entries", file=sys.stderr)
 
 
 if __name__ == "__main__":
