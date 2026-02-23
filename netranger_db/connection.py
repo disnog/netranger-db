@@ -64,17 +64,17 @@ class Database:
     """
     
     def __init__(self, config: DatabaseConfig):
-        self.config = config
+        self.settings = config
         self._pool: Optional[aiomysql.Pool] = None
-        
+
         # Query interfaces (initialized after connect)
         from .queries.config import ConfigQueries
         from .queries.guilds import GuildQueries
         from .queries.users import UserQueries
-        
+
         self.users = UserQueries(self)
         self.guilds = GuildQueries(self)
-        self.config_store = ConfigQueries(self)
+        self.config = ConfigQueries(self)
     
     @classmethod
     def from_env(cls) -> "Database":
@@ -87,12 +87,12 @@ class Database:
             return
         
         self._pool = await aiomysql.create_pool(
-            host=self.config.host,
-            port=self.config.port,
-            user=self.config.user,
-            password=self.config.password,
-            db=self.config.database,
-            maxsize=self.config.pool_size,
+            host=self.settings.host,
+            port=self.settings.port,
+            user=self.settings.user,
+            password=self.settings.password,
+            db=self.settings.database,
+            maxsize=self.settings.pool_size,
             autocommit=True,
             charset="utf8mb4",
         )

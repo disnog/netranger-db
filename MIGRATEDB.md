@@ -24,7 +24,7 @@ SQL
 ## Step 2: Install netranger-db
 
 ```bash
-pip install git+https://github.com/disnog/netranger-db.git
+pip install git+https://github.com/disnog/netranger-db.git@v2dev
 ```
 
 ## Step 3: Configure Environment
