@@ -32,7 +32,7 @@ import asyncio
 import json
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 
 # Add parent to path for netranger_db import
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -44,15 +44,23 @@ def parse_timestamp(value):
     """Parse a timestamp that might be float (unix) or ISO string."""
     if value is None:
         return None
-    if isinstance(value, (int, float)):
-        return datetime.utcfromtimestamp(value)
-    if isinstance(value, str):
+    if isinstance(value, datetime):
+        dt = value
+    elif isinstance(value, (int, float)):
+        dt = datetime.utcfromtimestamp(value)
+    elif isinstance(value, str):
         # Try ISO format
         try:
-            return datetime.fromisoformat(value.replace('Z', '+00:00'))
+            dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
         except ValueError:
-            pass
-    return None
+            return None
+    else:
+        return None
+
+    # Store as UTC-naive datetime for MariaDB compatibility.
+    if dt.tzinfo is not None:
+        dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt
 
 
 async def import_users(db: Database, users: list) -> int:
@@ -210,6 +218,40 @@ async def import_config(db: Database, config: list) -> int:
     return count
 
 
+async def reconcile_last_member_number(db: Database) -> int:
+    """
+    Ensure config.last_member_number is >= max(users.member_number).
+    Returns the resulting value.
+    """
+    row = await db.execute(
+        "SELECT COALESCE(MAX(member_number), 0) AS max_member_number FROM users",
+        fetchone=True,
+    )
+    max_member_number = int(row["max_member_number"] or 0)
+
+    current_row = await db.execute(
+        "SELECT value FROM config WHERE name = 'last_member_number'",
+        fetchone=True,
+    )
+    current_value = (
+        int(current_row["value"])
+        if current_row and current_row["value"] is not None
+        else 0
+    )
+
+    reconciled_value = max(max_member_number, current_value)
+    await db.execute(
+        """
+        INSERT INTO config (name, value)
+        VALUES ('last_member_number', %s)
+        ON DUPLICATE KEY UPDATE value = VALUES(value)
+        """,
+        (str(reconciled_value),),
+    )
+
+    return reconciled_value
+
+
 async def main():
     # Read JSON from stdin
     data = json.load(sys.stdin)
@@ -234,6 +276,9 @@ async def main():
         config = collections.get("config", [])
         config_count = await import_config(db, config)
         print(f"Imported {config_count} config entries")
+
+        reconciled = await reconcile_last_member_number(db)
+        print(f"Reconciled last_member_number={reconciled}")
         
         print("Import complete!")
         

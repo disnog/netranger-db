@@ -137,6 +137,10 @@ class UserQueries:
         Assign next member number to a user.
         Returns the assigned number.
         """
+        existing_number = await self.get_member_number(user_id)
+        if existing_number is not None:
+            return existing_number
+
         # Get and increment the counter atomically
         await self._db.execute(
             """
@@ -157,8 +161,11 @@ class UserQueries:
             "WHERE id = %s AND member_number IS NULL",
             (member_number, user_id),
         )
-        
-        return member_number
+
+        # Re-read the user row so callers always get the actual assigned value.
+        # This also handles races where another worker assigned a number first.
+        final_number = await self.get_member_number(user_id)
+        return final_number if final_number is not None else member_number
     
     async def get_member_number(self, user_id: int) -> Optional[int]:
         """Get a user's member number."""

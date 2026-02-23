@@ -86,23 +86,29 @@ class MigrationRunner:
         """Apply a single migration."""
         print(f"Applying migration {version:03d}_{name}...")
         
-        sql = path.read_text()
+        sql = path.read_text(encoding="utf-8")
         
         # Split on semicolons but handle edge cases
         # This is naive but works for most migrations
         statements = [s.strip() for s in sql.split(";") if s.strip()]
         
         async with self._db.pool.acquire() as conn:
-            async with conn.cursor() as cur:
-                for statement in statements:
-                    if statement:
-                        await cur.execute(statement)
-                
-                # Record the migration
-                await cur.execute(
-                    "INSERT INTO _migrations (version, name) VALUES (%s, %s)",
-                    (version, name),
-                )
+            await conn.begin()
+            try:
+                async with conn.cursor() as cur:
+                    for statement in statements:
+                        if statement:
+                            await cur.execute(statement)
+                    
+                    # Record the migration only if all statements succeeded.
+                    await cur.execute(
+                        "INSERT INTO _migrations (version, name) VALUES (%s, %s)",
+                        (version, name),
+                    )
+                await conn.commit()
+            except Exception:
+                await conn.rollback()
+                raise
         
         print(f"  Applied {version:03d}_{name}")
     

@@ -213,13 +213,34 @@ async def test_list_members_with_role_filter(mock_db, sample_user_row):
 
 @pytest.mark.asyncio
 async def test_assign_member_number(mock_db):
-    # Calls: INSERT config, SELECT config, UPDATE user
-    mock_db.execute.side_effect = [None, {"value": "5"}, None]
+    # Calls:
+    #   1) get_member_number() pre-check -> no value
+    #   2) INSERT/UPDATE config counter
+    #   3) SELECT config counter
+    #   4) UPDATE users.member_number
+    #   5) get_member_number() post-check -> assigned value
+    mock_db.execute.side_effect = [
+        None,
+        None,
+        {"value": "5"},
+        None,
+        {"member_number": 5},
+    ]
 
     number = await mock_db.users.assign_member_number(123456789)
 
     assert number == 5
-    assert mock_db.execute.call_count == 3
+    assert mock_db.execute.call_count == 5
+
+
+@pytest.mark.asyncio
+async def test_assign_member_number_returns_existing_without_increment(mock_db):
+    mock_db.execute.return_value = {"member_number": 12}
+
+    number = await mock_db.users.assign_member_number(123456789)
+
+    assert number == 12
+    mock_db.execute.assert_called_once()
 
 
 # ---------------------------------------------------------------------------

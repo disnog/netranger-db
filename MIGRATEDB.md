@@ -83,6 +83,10 @@ This exports:
 python scripts/import_to_mariadb.py < data.json
 ```
 
+The importer reconciles `config.last_member_number` to at least the current
+maximum value in `users.member_number` so future member-number assignment
+continues safely.
+
 ## Step 7: Verify Migration
 
 ```bash
@@ -94,6 +98,7 @@ mysql -u netranger -p netranger << 'SQL'
 SELECT COUNT(*) as user_count FROM users;
 SELECT COUNT(*) as member_count FROM users WHERE member_number IS NOT NULL;
 SELECT COUNT(*) as roles_count FROM user_permanent_roles;
+SELECT value AS last_member_number FROM config WHERE name = 'last_member_number';
 SELECT * FROM config;
 SQL
 ```
