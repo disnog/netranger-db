@@ -87,6 +87,10 @@ The importer reconciles `config.last_member_number` to at least the current
 maximum value in `users.member_number` so future member-number assignment
 continues safely.
 
+The runtime member-number counter uses a connection-local MariaDB increment
+when assigning new numbers, so concurrent joins reserve distinct values instead
+of reading a global counter value that another worker may have advanced.
+
 ## Step 7: Verify Migration
 
 ```bash
@@ -99,9 +103,12 @@ SELECT COUNT(*) as user_count FROM users;
 SELECT COUNT(*) as member_count FROM users WHERE member_number IS NOT NULL;
 SELECT COUNT(*) as roles_count FROM user_permanent_roles;
 SELECT value AS last_member_number FROM config WHERE name = 'last_member_number';
+SELECT MAX(member_number) AS max_member_number FROM users;
 SELECT * FROM config;
 SQL
 ```
+
+`last_member_number` should be greater than or equal to `max_member_number`.
 
 ## Step 8: Update Applications
 

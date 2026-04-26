@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -97,6 +98,36 @@ async def test_remove_permanent_role(mock_db):
     sql, params = mock_db.execute.call_args[0]
     assert "DELETE" in sql
     assert params == (123456789, "Member")
+
+
+@pytest.mark.asyncio
+async def test_set_permanent_roles_replaces_roles_transactionally(mock_db):
+    conn, cur = _mock_transaction_cursor(mock_db)
+
+    await mock_db.users.set_permanent_roles(
+        123456789,
+        ["Member", "recruiter", "Member"],
+    )
+
+    conn.begin.assert_awaited_once()
+    conn.commit.assert_awaited_once()
+    conn.rollback.assert_not_awaited()
+    cur.execute.assert_awaited_once()
+    cur.executemany.assert_awaited_once()
+    _, params = cur.executemany.await_args.args
+    assert params == [(123456789, "Member"), (123456789, "recruiter")]
+
+
+@pytest.mark.asyncio
+async def test_set_permanent_roles_rolls_back_on_failure(mock_db):
+    conn, cur = _mock_transaction_cursor(mock_db)
+    cur.executemany.side_effect = RuntimeError("boom")
+
+    with pytest.raises(RuntimeError, match="boom"):
+        await mock_db.users.set_permanent_roles(123456789, ["Member"])
+
+    conn.rollback.assert_awaited_once()
+    conn.commit.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -215,22 +246,21 @@ async def test_list_members_with_role_filter(mock_db, sample_user_row):
 async def test_assign_member_number(mock_db):
     # Calls:
     #   1) get_member_number() pre-check -> no value
-    #   2) INSERT/UPDATE config counter
-    #   3) SELECT config counter
-    #   4) UPDATE users.member_number
-    #   5) get_member_number() post-check -> assigned value
+    #   2) config.increment() -> reserved member number
+    #   3) UPDATE users.member_number
+    #   4) get_member_number() post-check -> assigned value
     mock_db.execute.side_effect = [
         None,
         None,
-        {"value": "5"},
-        None,
         {"member_number": 5},
     ]
+    mock_db.config.increment = AsyncMock(return_value=5)
 
     number = await mock_db.users.assign_member_number(123456789)
 
     assert number == 5
-    assert mock_db.execute.call_count == 5
+    mock_db.config.increment.assert_awaited_once_with("last_member_number")
+    assert mock_db.execute.call_count == 3
 
 
 @pytest.mark.asyncio
@@ -260,3 +290,14 @@ def test_user_permanent_roles_not_shared():
     u2 = User(id=2, name="b")
     u1.permanent_roles.append("Member")
     assert u2.permanent_roles == []
+
+
+def _mock_transaction_cursor(mock_db):
+    conn = MagicMock()
+    conn.begin = AsyncMock()
+    conn.commit = AsyncMock()
+    conn.rollback = AsyncMock()
+    cur = AsyncMock()
+    mock_db.pool.acquire.return_value.__aenter__.return_value = conn
+    conn.cursor.return_value.__aenter__.return_value = cur
+    return conn, cur

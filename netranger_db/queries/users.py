@@ -110,6 +110,35 @@ class UserQueries:
             "WHERE user_id = %s AND role_significance = %s",
             (user_id, role_significance),
         )
+
+    async def set_permanent_roles(
+        self,
+        user_id: int,
+        role_significances: list[str],
+    ) -> None:
+        """Replace all permanent roles for a user."""
+        unique_roles = list(dict.fromkeys(role_significances))
+        async with self._db.pool.acquire() as conn:
+            await conn.begin()
+            try:
+                async with conn.cursor() as cur:
+                    await cur.execute(
+                        "DELETE FROM user_permanent_roles WHERE user_id = %s",
+                        (user_id,),
+                    )
+                    if unique_roles:
+                        await cur.executemany(
+                            """
+                            INSERT INTO user_permanent_roles
+                                (user_id, role_significance)
+                            VALUES (%s, %s)
+                            """,
+                            [(user_id, role) for role in unique_roles],
+                        )
+                await conn.commit()
+            except Exception:
+                await conn.rollback()
+                raise
     
     async def get_permanent_roles(self, user_id: int) -> list[str]:
         """Get all permanent roles for a user."""
@@ -141,19 +170,7 @@ class UserQueries:
         if existing_number is not None:
             return existing_number
 
-        # Get and increment the counter atomically
-        await self._db.execute(
-            """
-            INSERT INTO config (name, value) VALUES ('last_member_number', '1')
-            ON DUPLICATE KEY UPDATE value = value + 1
-            """,
-        )
-        
-        row = await self._db.execute(
-            "SELECT value FROM config WHERE name = 'last_member_number'",
-            fetchone=True,
-        )
-        member_number = int(row["value"])
+        member_number = await self._db.config.increment("last_member_number")
         
         # Assign to user
         await self._db.execute(

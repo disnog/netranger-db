@@ -63,12 +63,18 @@ class ConfigQueries:
         return int(value) if value is not None else default
     
     async def increment(self, name: str, by: int = 1) -> int:
-        """Increment a numeric config value and return the new value."""
-        await self._db.execute(
-            """
-            INSERT INTO config (name, value) VALUES (%s, %s)
-            ON DUPLICATE KEY UPDATE value = value + %s
-            """,
-            (name, str(by), by),
-        )
-        return await self.get_int(name)
+        """Increment a numeric config value and return this connection's new value."""
+        async with self._db.pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    INSERT INTO config (name, value)
+                    VALUES (%s, LAST_INSERT_ID(%s))
+                    ON DUPLICATE KEY UPDATE
+                        value = LAST_INSERT_ID(CAST(value AS UNSIGNED) + %s)
+                    """,
+                    (name, by, by),
+                )
+                await cur.execute("SELECT LAST_INSERT_ID()")
+                row = await cur.fetchone()
+        return int(row[0])
