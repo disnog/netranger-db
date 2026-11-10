@@ -70,3 +70,24 @@ async def test_apply_migration_rolls_back_on_failure(tmp_path):
 
     executed_sql = [call.args[0] for call in cur.execute.await_args_list]
     assert not any("INSERT INTO _migrations" in stmt for stmt in executed_sql)
+
+
+def test_every_migration_is_safe_to_rerun():
+    """MariaDB DDL commits implicitly, so a failed migration is re-run as-is.
+
+    Each CREATE TABLE therefore needs IF NOT EXISTS, or a retry fails on
+    "Table already exists".
+    """
+    import re
+
+    runner = MigrationRunner(MagicMock())
+    migrations = runner.get_available_migrations()
+    assert migrations
+
+    for _version, _name, path in migrations:
+        sql = path.read_text(encoding="utf-8")
+        for statement in sql.split(";"):
+            if re.search(r"\bCREATE\s+TABLE\b", statement, re.IGNORECASE):
+                assert re.search(
+                    r"\bCREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\b", statement, re.IGNORECASE
+                ), f"{path.name}: CREATE TABLE without IF NOT EXISTS"

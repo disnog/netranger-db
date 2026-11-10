@@ -54,7 +54,8 @@ await db.users.remove_permanent_role(user_id, "Member")
 await db.users.set_permanent_roles(user_id, ["Member"])
 roles = await db.users.get_permanent_roles(user_id)
 has_role = await db.users.has_permanent_role(user_id, "Member")
-member_num = await db.users.assign_member_number(user_id)
+member_num = await db.users.assign_member_number(user_id)  # LookupError if no users row
+assigned = await db.users.assign_missing_member_numbers()  # [(user_id, number), ...] in join order
 members = await db.users.list_members(with_role="Member")
 count = await db.users.count_by_role("Member")
 
@@ -93,6 +94,13 @@ Add numbered SQL files to `netranger_db/migrations/versions/`:
 002_add_email_verification.sql
 003_add_audit_log.sql
 ```
+
+MariaDB commits DDL immediately, so the transaction around a migration can't
+undo a statement that already ran. A migration that fails partway is retried
+as a whole on the next `nrdb-migrate migrate`, so write every statement to be
+safe on a partly applied database: `CREATE TABLE IF NOT EXISTS`,
+`ALTER TABLE ... ADD COLUMN IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`, and
+so on. A unit test enforces this for `CREATE TABLE`.
 
 ## Migration from MongoDB
 

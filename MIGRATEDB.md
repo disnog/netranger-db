@@ -87,6 +87,13 @@ The importer reconciles `config.last_member_number` to at least the current
 maximum value in `users.member_number` so future member-number assignment
 continues safely.
 
+> **Run the importer only before cutover.** It can be re-run as many times as
+> needed while the v2 bot and web are still stopped. Once they start writing
+> to MariaDB, never run it again: it overwrites names with the export's
+> values and re-adds permanent roles that members have lost since the export
+> (`INSERT IGNORE`), rolling those users back. To redo an import after
+> cutover, drop and recreate the database and start again from Step 4.
+
 The runtime member-number counter uses a connection-local MariaDB increment
 when assigning new numbers, so concurrent joins reserve distinct values instead
 of reading a global counter value that another worker may have advanced.
@@ -109,6 +116,9 @@ SQL
 ```
 
 `last_member_number` should be greater than or equal to `max_member_number`.
+
+Current Members who have no member number yet are numbered by the v2 bot when
+it starts, in `first_joined_at` order, the same way the legacy bot did.
 
 ## Step 8: Update Applications
 
@@ -148,10 +158,17 @@ If issues occur, the MongoDB data remains untouched. Simply:
   "_id": 123456789,
   "name": "username",
   "discriminator": "1234",
-  "permanent_roles": ["Member", "!eggs"],
+  "permanent_roles": ["Member", "eggs"],
   "member_number": 42
 }
 ```
+
+Permanent roles are stored as role *significance* strings (`Member`,
+`periphery`, `recruiter`, `eggs`), not role names. The legacy `!eggs` command
+wrote the literal string `"!eggs"`, but each legacy bot restart replaced it
+with the significance `"eggs"`, so an export normally holds `"eggs"`. Either
+form imports as-is, and the v2 bot's startup sync replaces it with the
+significances of the member's current Discord roles.
 
 **MariaDB:**
 ```sql
@@ -167,15 +184,24 @@ The nested MongoDB structure is normalized into relational tables with proper fo
 
 ## Troubleshooting
 
-### "Table already exists" during migration
+### A migration failed partway
+MariaDB commits each `CREATE TABLE` immediately, so a migration that fails
+partway leaves the tables it already created and no `_migrations` row for it.
+Fix the cause (permissions, disk, connection) and run `nrdb-migrate migrate`
+again: every migration uses `CREATE TABLE IF NOT EXISTS` (and the equivalent
+`IF NOT EXISTS` forms for other DDL), so the retry skips what already exists
+and records the migration once it completes.
+
 ```bash
-# Check current state
-nrdb-migrate status
-# Migrations are idempotent - already applied ones are skipped
+nrdb-migrate status   # the failed migration still shows as pending
+nrdb-migrate migrate
 ```
 
+New migrations must follow the same rule, and CI checks it.
+
 ### Import fails with duplicate key
-The import script uses `INSERT ... ON DUPLICATE KEY UPDATE`, so re-running is safe.
+The import script uses `INSERT ... ON DUPLICATE KEY UPDATE`, so re-running it
+is safe **before cutover only**. See the warning in Step 6.
 
 ### Connection refused
 Check MariaDB is running and accepting connections:

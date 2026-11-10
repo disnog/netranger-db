@@ -243,34 +243,77 @@ async def test_list_members_with_role_filter(mock_db, sample_user_row):
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_assign_member_number(mock_db):
-    # Calls:
-    #   1) get_member_number() pre-check -> no value
-    #   2) config.increment() -> reserved member number
-    #   3) UPDATE users.member_number
-    #   4) get_member_number() post-check -> assigned value
-    mock_db.execute.side_effect = [
-        None,
-        None,
-        {"member_number": 5},
-    ]
-    mock_db.config.increment = AsyncMock(return_value=5)
+async def test_assign_member_number_reserves_and_stores_in_one_transaction(mock_db):
+    conn, cur = _mock_transaction_cursor(mock_db)
+    # 1) SELECT ... FOR UPDATE -> no number yet, 2) SELECT LAST_INSERT_ID() -> 5
+    cur.fetchone.side_effect = [(None,), (5,)]
 
     number = await mock_db.users.assign_member_number(123456789)
 
     assert number == 5
-    mock_db.config.increment.assert_awaited_once_with("last_member_number")
-    assert mock_db.execute.call_count == 3
+    executed = [call.args[0] for call in cur.execute.await_args_list]
+    assert "FOR UPDATE" in executed[0]
+    assert "last_member_number" in cur.execute.await_args_list[1].args[1]
+    assert "UPDATE users SET member_number" in executed[3]
+    assert cur.execute.await_args_list[3].args[1] == (5, 123456789)
+    conn.begin.assert_awaited_once()
+    conn.commit.assert_awaited_once()
+    conn.rollback.assert_not_awaited()
 
 
 @pytest.mark.asyncio
 async def test_assign_member_number_returns_existing_without_increment(mock_db):
-    mock_db.execute.return_value = {"member_number": 12}
+    conn, cur = _mock_transaction_cursor(mock_db)
+    cur.fetchone.side_effect = [(12,)]
 
     number = await mock_db.users.assign_member_number(123456789)
 
     assert number == 12
-    mock_db.execute.assert_called_once()
+    cur.execute.assert_awaited_once()
+    conn.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_assign_member_number_unknown_user_reserves_nothing(mock_db):
+    conn, cur = _mock_transaction_cursor(mock_db)
+    cur.fetchone.side_effect = [None]
+
+    with pytest.raises(LookupError):
+        await mock_db.users.assign_member_number(999)
+
+    cur.execute.assert_awaited_once()
+    conn.rollback.assert_awaited_once()
+    conn.commit.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# assign_missing_member_numbers()
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_assign_missing_member_numbers_numbers_in_batch_order(mock_db):
+    first = [User(id=1, name="a"), User(id=2, name="b")]
+    mock_db.users.get_users_without_member_number = AsyncMock(side_effect=[first, []])
+    mock_db.users.assign_member_number = AsyncMock(side_effect=[7, 8])
+
+    assigned = await mock_db.users.assign_missing_member_numbers()
+
+    assert assigned == [(1, 7), (2, 8)]
+    calls = mock_db.users.assign_member_number.await_args_list
+    assert [c.args[0] for c in calls] == [1, 2]
+
+
+@pytest.mark.asyncio
+async def test_assign_missing_member_numbers_stops_if_rows_repeat(mock_db):
+    # If a user keeps coming back without a number, don't loop forever.
+    stuck = [User(id=1, name="a")]
+    mock_db.users.get_users_without_member_number = AsyncMock(return_value=stuck)
+    mock_db.users.assign_member_number = AsyncMock(return_value=3)
+
+    assigned = await mock_db.users.assign_missing_member_numbers()
+
+    assert assigned == [(1, 3)]
+    assert mock_db.users.get_users_without_member_number.await_count == 2
 
 
 # ---------------------------------------------------------------------------

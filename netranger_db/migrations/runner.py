@@ -36,6 +36,14 @@ class MigrationRunner:
         etc.
     
     Applied migrations are tracked in a _migrations table.
+
+    MariaDB commits DDL implicitly, so wrapping a migration in a transaction
+    cannot undo a CREATE or ALTER that ran before a later statement failed.
+    Every migration must therefore be safe to run again on a database where
+    it was partly applied: use CREATE TABLE IF NOT EXISTS, ADD COLUMN IF NOT
+    EXISTS, CREATE INDEX IF NOT EXISTS and so on. The _migrations row is only
+    written once every statement has succeeded, so a failed migration is
+    simply retried on the next run.
     """
     
     def __init__(self, db: "Database"):
@@ -44,6 +52,18 @@ class MigrationRunner:
     
     async def ensure_migrations_table(self) -> None:
         """Create the migrations tracking table if it doesn't exist."""
+        # Check first: CREATE TABLE IF NOT EXISTS on an existing table makes
+        # MariaDB return note 1050, which the driver surfaces as a warning on
+        # every run.
+        exists = await self._db.execute(
+            """
+            SELECT 1 FROM information_schema.tables
+            WHERE table_schema = DATABASE() AND table_name = '_migrations'
+            """,
+            fetchone=True,
+        )
+        if exists:
+            return
         await self._db.execute(
             """
             CREATE TABLE IF NOT EXISTS _migrations (
@@ -92,6 +112,8 @@ class MigrationRunner:
         # This is naive but works for most migrations
         statements = [s.strip() for s in sql.split(";") if s.strip()]
         
+        # The transaction only protects DML statements and the _migrations
+        # insert; DDL commits implicitly (see the class docstring).
         async with self._db.pool.acquire() as conn:
             await conn.begin()
             try:

@@ -66,15 +66,26 @@ class ConfigQueries:
         """Increment a numeric config value and return this connection's new value."""
         async with self._db.pool.acquire() as conn:
             async with conn.cursor() as cur:
-                await cur.execute(
-                    """
-                    INSERT INTO config (name, value)
-                    VALUES (%s, LAST_INSERT_ID(%s))
-                    ON DUPLICATE KEY UPDATE
-                        value = LAST_INSERT_ID(CAST(value AS UNSIGNED) + %s)
-                    """,
-                    (name, by, by),
-                )
-                await cur.execute("SELECT LAST_INSERT_ID()")
-                row = await cur.fetchone()
-        return int(row[0])
+                return await increment_with_cursor(cur, name, by)
+
+
+async def increment_with_cursor(cur, name: str, by: int = 1) -> int:
+    """
+    Increment a numeric config value using an existing cursor.
+
+    LAST_INSERT_ID(expr) makes the new value readable on this connection only,
+    so concurrent callers each get their own result. Use this form when the
+    increment has to happen inside a caller's transaction.
+    """
+    await cur.execute(
+        """
+        INSERT INTO config (name, value)
+        VALUES (%s, LAST_INSERT_ID(%s))
+        ON DUPLICATE KEY UPDATE
+            value = LAST_INSERT_ID(CAST(value AS UNSIGNED) + %s)
+        """,
+        (name, by, by),
+    )
+    await cur.execute("SELECT LAST_INSERT_ID()")
+    row = await cur.fetchone()
+    return int(row[0])
