@@ -48,4 +48,5 @@ jobs:
           DB_USER: root
           DB_PASS: testpass
           DB_NAME: netranger_test
+          NRDB_INTEGRATION: "1"
         run: pytest -v --cov=netranger_db --cov-report=term-missing

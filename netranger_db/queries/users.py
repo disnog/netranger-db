@@ -22,6 +22,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 
+from .config import increment_with_cursor
+
 if TYPE_CHECKING:
     from ..connection import Database
 
@@ -163,27 +165,72 @@ class UserQueries:
     
     async def assign_member_number(self, user_id: int) -> int:
         """
-        Assign next member number to a user.
-        Returns the assigned number.
+        Assign the next member number to a user who doesn't have one.
+
+        Returns the user's member number: the existing one if already
+        assigned, otherwise the newly assigned one. Raises LookupError if
+        the user isn't in the users table, so no number is reserved for a
+        row that can't hold it.
+
+        The user row is locked for the whole operation, so concurrent calls
+        for the same user wait for each other and reserve only one number.
         """
-        existing_number = await self.get_member_number(user_id)
-        if existing_number is not None:
-            return existing_number
+        async with self._db.pool.acquire() as conn:
+            await conn.begin()
+            try:
+                async with conn.cursor() as cur:
+                    await cur.execute(
+                        "SELECT member_number FROM users WHERE id = %s FOR UPDATE",
+                        (user_id,),
+                    )
+                    row = await cur.fetchone()
+                    if row is None:
+                        raise LookupError(f"User {user_id} not found")
+                    if row[0] is not None:
+                        await conn.commit()
+                        return int(row[0])
 
-        member_number = await self._db.config.increment("last_member_number")
-        
-        # Assign to user
-        await self._db.execute(
-            "UPDATE users SET member_number = %s "
-            "WHERE id = %s AND member_number IS NULL",
-            (member_number, user_id),
-        )
+                    member_number = await increment_with_cursor(
+                        cur, "last_member_number"
+                    )
 
-        # Re-read the user row so callers always get the actual assigned value.
-        # This also handles races where another worker assigned a number first.
-        final_number = await self.get_member_number(user_id)
-        return final_number if final_number is not None else member_number
-    
+                    await cur.execute(
+                        "UPDATE users SET member_number = %s WHERE id = %s",
+                        (member_number, user_id),
+                    )
+                await conn.commit()
+            except BaseException:
+                await conn.rollback()
+                raise
+        return member_number
+
+    async def assign_missing_member_numbers(
+        self,
+        with_role: str = "Member",
+        batch_size: int = 100,
+    ) -> list[tuple[int, int]]:
+        """
+        Number every user with ``with_role`` who has no member number yet.
+
+        Users are numbered in first_joined_at order, as the legacy bot did.
+        Users without a first_joined_at are skipped. Returns a list of
+        (user_id, member_number) pairs in assignment order.
+        """
+        assigned: list[tuple[int, int]] = []
+        seen: set[int] = set()
+        while True:
+            batch = await self.get_users_without_member_number(
+                with_role=with_role,
+                limit=batch_size,
+            )
+            pending = [u for u in batch if u.id not in seen]
+            if not pending:
+                return assigned
+            for user in pending:
+                seen.add(user.id)
+                number = await self.assign_member_number(user.id)
+                assigned.append((user.id, number))
+
     async def get_member_number(self, user_id: int) -> Optional[int]:
         """Get a user's member number."""
         row = await self._db.execute(
@@ -258,7 +305,7 @@ class UserQueries:
             WHERE u.member_number IS NULL 
               AND u.first_joined_at IS NOT NULL
               AND r.role_significance = %s
-            ORDER BY u.first_joined_at
+            ORDER BY u.first_joined_at, u.id
             LIMIT %s
             """,
             (with_role, limit),

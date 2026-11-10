@@ -42,14 +42,18 @@ Migrate the shared Network Ranger data layer from the legacy MongoDB helper modu
 
 ## Acceptance Criteria
 
-- All SQL migrations apply on an empty database.
+- All SQL migrations apply on an empty database, and a migration that failed partway can be re-run (tested against MariaDB in CI).
 - MongoDB export/import is repeatable and does not create duplicate users, roles, guilds, channels, or config rows.
 - Existing member numbers are preserved.
 - `last_member_number` is reconciled to the imported maximum.
-- Concurrent member-number assignment reserves distinct values.
+- Concurrent member-number assignment reserves distinct values, and never reserves a number it doesn't store.
 - `pytest` and `ruff check .` pass.
 
 ## Audit Notes
 
 - Fixed during audit: member-number assignment now reserves the incremented config value on the same MariaDB connection.
 - Fixed during audit: added `set_permanent_roles()` so consumers can replace current member role state safely during sync.
+- Fixed after review: `001_initial.sql` uses `CREATE TABLE IF NOT EXISTS` so a partly applied migration can be retried; the runner's transaction cannot roll back MariaDB DDL.
+- Fixed after review: `assign_member_number()` locks the user row and reserves the number in the same transaction, so an unknown user id raises `LookupError` and concurrent calls for one user reserve a single number.
+- Added after review: `assign_missing_member_numbers()` numbers Members without a number in join order, for the bot's startup sync.
+- Added after review: CI runs `tests/test_integration_mariadb.py` against its MariaDB service (`NRDB_INTEGRATION=1`).
